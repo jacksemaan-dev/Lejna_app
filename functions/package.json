@@ -1,0 +1,23 @@
+{
+  "name": "lejne-functions",
+  "description": "Cloud Functions for the Lejne application",
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "archiver": "^6.0.0",
+    "firebase-admin": "^11.5.0",
+    "firebase-functions": "^4.2.0",
+    "moment": "^2.29.4",
+    "pdfkit": "^0.13.0",
+    "qrcode": "^1.5.1"
+  },
+  "devDependencies": {
+    "@types/archiver": "^6.0.3",
+    "@types/pdfkit": "^0.17.3",
+    "@types/qrcode": "^1.5.5",
+    "typescript": "^5.2.2"
+  }
+}

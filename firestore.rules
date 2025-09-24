@@ -1,0 +1,88 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Building-specific documents
+    match /buildings/{buildingId}/{collectionId}/{docId} {
+      allow read: if isMemberOf(buildingId);
+      // Default deny writes; overridden per collection below
+      allow write: if false;
+    }
+
+    // Ledger entries: append-only
+    match /buildings/{buildingId}/ledger/{entryId} {
+      allow read: if isMemberOf(buildingId);
+      allow create: if isAdmin(buildingId);
+      allow update, delete: if false;
+    }
+
+    // Charges
+    match /buildings/{buildingId}/charges/{chargeId} {
+      allow read: if isMemberOf(buildingId);
+      allow create: if isAdmin(buildingId);
+      allow update, delete: if false;
+    }
+
+    // Charge splits
+    match /buildings/{buildingId}/chargeSplits/{splitId} {
+      allow read: if isMemberOf(buildingId);
+      allow create, update: if isAdmin(buildingId);
+      allow delete: if false;
+    }
+
+    // Payments
+    match /buildings/{buildingId}/payments/{paymentId} {
+      allow read: if isMemberOf(buildingId) || isAuditor(buildingId);
+      allow create: if isAdmin(buildingId);
+      allow update, delete: if false;
+    }
+
+    // Invoices
+    match /buildings/{buildingId}/invoices/{invoiceId} {
+      allow read: if isMemberOf(buildingId);
+      allow create: if isAdmin(buildingId);
+      allow update, delete: if false;
+    }
+
+    // Audit log
+    match /buildings/{buildingId}/audit/{logId} {
+      allow read: if isAdmin(buildingId) || isAuditor(buildingId);
+      allow create: if request.auth != null;
+      allow update, delete: if false;
+    }
+
+    // Members
+    match /buildings/{buildingId}/members/{memberId} {
+      allow read: if isAdmin(buildingId) || request.auth.uid == resource.data.userId;
+      allow create, update: if isAdmin(buildingId);
+      allow delete: if false;
+    }
+
+    // Units
+    match /buildings/{buildingId}/units/{unitId} {
+      allow read: if isMemberOf(buildingId);
+      allow create, update: if isAdmin(buildingId);
+      allow delete: if false;
+    }
+
+    // Invite tokens live at top level and are validated via functions
+    match /inviteTokens/{tokenId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Users
+    match /users/{userId} {
+      allow read, update: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+
+  // Helper functions
+  function isMemberOf(buildingId) {
+    return exists(/databases/$(database)/documents/buildings/$(buildingId)/members/$(request.auth.uid));
+  }
+  function isAdmin(buildingId) {
+    return get(/databases/$(database)/documents/buildings/$(buildingId)/members/$(request.auth.uid)).data.role == 'admin';
+  }
+  function isAuditor(buildingId) {
+    return get(/databases/$(database)/documents/buildings/$(buildingId)/members/$(request.auth.uid)).data.role == 'auditor';
+  }
+}

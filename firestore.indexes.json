@@ -1,0 +1,37 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "payments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "buildingId", "mode": "ASCENDING" },
+        { "fieldPath": "createdAt", "mode": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "charges",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "buildingId", "mode": "ASCENDING" },
+        { "fieldPath": "publishedAt", "mode": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "chargeSplits",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "chargeId", "mode": "ASCENDING" },
+        { "fieldPath": "unitId", "mode": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "ledger",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "buildingId", "mode": "ASCENDING" },
+        { "fieldPath": "createdAt", "mode": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
