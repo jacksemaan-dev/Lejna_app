@@ -1,0 +1,68 @@
+workflows:
+  ios_testflight:
+    name: iOS → TestFlight (Lejne)
+    max_build_duration: 60
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+      groups:
+        - app_store_connect
+      vars:
+        IOS_SCHEME: Runner
+        IOS_WORKSPACE: ios/Runner.xcworkspace
+        IOS_EXPORT_METHOD: app-store
+        BUNDLE_ID: com.lejna.app
+    cache:
+      cache_paths:
+        - $CM_BUILD_DIR/ios/Pods
+        - $HOME/Library/Caches/CocoaPods
+        - $FLUTTER_ROOT/.pub-cache
+    scripts:
+      - name: Flutter deps
+        script: |
+          flutter --version
+          flutter pub get
+
+      - name: iOS pods
+        script: |
+          cd ios
+          pod repo update
+          pod install
+          cd ..
+
+      # 🔐 Automatic code signing: fetch & install certs/profiles using your API key
+      - name: Fetch signing files (App Store)
+        script: |
+          app-store-connect fetch-signing-files \
+            "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+          keychain add-certificates
+          xcode-project use-profiles
+
+      - name: Flutter build (no codesign)
+        script: |
+          flutter build ios --release --no-codesign
+
+      - name: Build & sign IPA
+        script: |
+          xcode-project build-ipa \
+            --workspace "$IOS_WORKSPACE" \
+            --scheme "$IOS_SCHEME" \
+            --archive-flags="-destination generic/platform=iOS" \
+            --export-method "$IOS_EXPORT_METHOD"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - build/ios/archive/*.xcarchive
+
+    publishing:
+      app_store_connect:
+        auth: api_key
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        submit_to_testflight: true
+        beta_groups:
+          - Lejne Testers
