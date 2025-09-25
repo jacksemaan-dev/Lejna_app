@@ -1,67 +1,101 @@
-workflows:
-  ios_testflight:
-    name: iOS → TestFlight (Lejne)
+﻿workflows:
+  ios_debug:
+    name: Lejna iOS Debug (no codesign)
     max_build_duration: 60
     environment:
-      flutter: stable
-      xcode: latest
-      cocoapods: default
-      groups:
-        - app_store_connect
       vars:
-        IOS_SCHEME: Runner
-        IOS_WORKSPACE: ios/Runner.xcworkspace
-        IOS_EXPORT_METHOD: app-store
-        BUNDLE_ID: com.lejna.app
-    cache:
-      cache_paths:
-        - $CM_BUILD_DIR/ios/Pods
-        - $HOME/Library/Caches/CocoaPods
-        - $FLUTTER_ROOT/.pub-cache
+        FLUTTER_VERSION: "3.24.3"
+      xcode: 15.4
+      cocoapods: default
+      cache:
+        cache_paths:
+          - ~/.flutter-sdk
+          - ~/.pub-cache
+          - ~/Library/Caches/CocoaPods
     scripts:
-      - name: Flutter deps
+      - name: Install Flutter via shallow git (cached)
         script: |
+          #!/bin/sh
+          set -e
+          SDK_ROOT="\C:\Users\User/.flutter-sdk"
+          SDK_DIR="\/\"
+          REPO_URL="https://github.com/flutter/flutter"
+
+          mkdir -p "\"
+          if [ ! -x "\/bin/flutter" ]; then
+            rm -rf "\.tmp"
+            i=1
+            while [ \ -le 3 ]; do
+              echo "Clone attempt \/3…"
+              if git clone --depth 1 --branch "\" "\" "\.tmp"; then
+                mv "\.tmp" "\"
+                break
+              fi
+              [ \ -eq 3 ] && { echo "Failed to clone Flutter after 3 attempts"; exit 2; }
+              sleep 10; i=\
+            done
+          else
+            echo "Flutter \ already cached at \"
+          fi
+
+          export PATH="\/bin:\"
           flutter --version
+          flutter config --no-analytics
+          flutter precache --ios
+
+      - name: Pub get
+        script: |
+          #!/bin/sh
+          set -e
+          export PATH="\C:\Users\User/.flutter-sdk/\/bin:\"
           flutter pub get
 
-      - name: iOS pods
+      - name: Podfile sanitize + robust pod install (POSIX)
         script: |
+          #!/bin/sh
+          set -e
+          # Ensure CocoaPods CDN is used and iOS 13.0 is set in your Podfile
+          # (Make sure your ios/Podfile starts with: source 'https://cdn.cocoapods.org/')
+          sed -i.bak 's/[‘’]/'\''/g; s/[“”]/"/g; s/[–—]/-/g; s/…/.../g' ios/Podfile || true
+          rm -f ios/Podfile.bak
+          if grep -n "[‘’“”–—…]" ios/Podfile >/dev/null 2>&1; then
+            echo "Smart punctuation still present in ios/Podfile."; exit 1
+          fi
+
           cd ios
+          ruby -v || true
+          pod --version || true
           pod repo update
-          pod install
+
+          pod deintegrate || true
+          rm -rf Pods Podfile.lock
+
+          attempts=3; delay=10; i=1
+          while [ "\" -le "\" ]; do
+            echo "pod install attempt \/\…"
+            if pod install --repo-update; then
+              echo "pod install succeeded on attempt \"; break
+            fi
+            if [ "\" -eq "\" ]; then
+              echo "pod install failed after \ attempts"; exit 2
+            fi
+            echo "Retrying in \s…"; sleep "\"; i=\
+          done
           cd ..
 
-      # 🔐 Automatic code signing: fetch & install certs/profiles using your API key
-      - name: Fetch signing files (App Store)
+      - name: Build iOS debug (no codesign)
         script: |
-          app-store-connect fetch-signing-files \
-            "$BUNDLE_ID" \
-            --type IOS_APP_STORE \
-            --create
-          keychain add-certificates
-          xcode-project use-profiles
-
-      - name: Flutter build (no codesign)
-        script: |
-          flutter build ios --release --no-codesign
-
-      - name: Build & sign IPA
-        script: |
-          xcode-project build-ipa \
-            --workspace "$IOS_WORKSPACE" \
-            --scheme "$IOS_SCHEME" \
-            --archive-flags="-destination generic/platform=iOS" \
-            --export-method "$IOS_EXPORT_METHOD"
+          #!/bin/sh
+          set -e
+          export PATH="\C:\Users\User/.flutter-sdk/\/bin:\"
+          flutter build ios --debug --no-codesign -v
 
     artifacts:
-      - build/ios/ipa/*.ipa
-      - build/ios/archive/*.xcarchive
-publishing:
-  app_store_connect:
-    auth: integration
-    api_key: $APP_STORE_CONNECT_PRIVATE_KEY
-    key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
-    issuer_id: $APP_STORE_CONNECT_ISSUER_ID
-    submit_to_testflight: true
-    beta_groups:
-      - Lejne Testers
+      - build/ios/**/*
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: "*"
+          include: true
+          source: true
