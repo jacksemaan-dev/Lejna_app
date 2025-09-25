@@ -1,5 +1,24 @@
-platform :ios, '13.0'
+# CocoaPods analytics
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+platform :ios, '13.0'
+
+# Locate Flutter and load its pod helper
+def flutter_root
+  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
+  unless File.exist?(generated_xcode_build_settings_path)
+    raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, make sure `flutter pub get` is executed first"
+  end
+  File.foreach(generated_xcode_build_settings_path) do |line|
+    match = line.match(/FLUTTER_ROOT\=(.*)/)
+    return match[1].strip if match
+  end
+  raise "FLUTTER_ROOT not found in Generated.xcconfig"
+end
+
+require File.expand_path(File.join(flutter_root, 'packages', 'flutter_tools', 'bin', 'podhelper'), __FILE__)
+
+flutter_ios_podfile_setup
 
 project 'Runner', {
   'Debug' => :debug,
@@ -7,78 +26,48 @@ project 'Runner', {
   'Release' => :release,
 }
 
-def flutter_root
-  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
-  unless File.exist?(generated_xcode_build_settings_path)
-    raise "Generated.xcconfig must exist. Run 'flutter pub get' first."
-  end
-  File.foreach(generated_xcode_build_settings_path) do |line|
-    matches = line.match(/FLUTTER_ROOT=(.*)/)
-    return matches[1].strip if matches
-  end
-  raise "FLUTTER_ROOT not found in Generated.xcconfig"
-end
-
-require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
-
-flutter_ios_podfile_setup
-
 target 'Runner' do
-  use_frameworks! :linkage => :static
-  use_modular_headers!
+  # Do NOT manually add use_frameworks!/use_modular_headers! here; Flutter handles it per-plugin.
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 end
 
 post_install do |installer|
+  # 1) Apply Flutter’s additional settings to every pod target
   installer.pods_project.targets.each do |t|
+    flutter_additional_ios_build_settings(t)
+
+    # 2) Enforce iOS 13.0 min and scrub invalid flags
     t.build_configurations.each do |config|
       s = config.build_settings
 
-      # Normalize all types (String/Array) to an Array, scrub, then write back
+      # Ensure minimum iOS deployment target
+      current = s['IPHONEOS_DEPLOYMENT_TARGET'].to_s
+      min = '13.0'
+      if current.empty?
+        s['IPHONEOS_DEPLOYMENT_TARGET'] = min
+      else
+        begin
+          require 'rubygems'
+          s['IPHONEOS_DEPLOYMENT_TARGET'] = min if Gem::Version.new(current) < Gem::Version.new(min)
+        rescue
+          s['IPHONEOS_DEPLOYMENT_TARGET'] = min
+        end
+      end
+
+      # Strip any form of -G / -G0 / -G<number> from all relevant flags
       %w[OTHER_CFLAGS OTHER_CPLUSPLUSFLAGS OTHER_LDFLAGS OTHER_SWIFT_FLAGS].each do |k|
         next unless s[k]
-
         vals = s[k].is_a?(Array) ? s[k].dup : s[k].to_s.split(/\s+/)
-        # Remove any form of -G, -G0, -G<number>
-        vals = vals.reject { |v| v =~ /\A-G(\d+)?\z/ }
 
-        # Also scrub occurrences embedded in a string
-        vals = vals.map { |v| v.gsub(/(^|\s)-G(\d+)?($|\s)/, ' ').strip }.reject(&:empty?)
+        # remove tokens that are exactly -G or -G<digits>
+        vals.reject! { |v| v =~ /\A-G(\d+)?\z/ }
+
+        # and scrub embedded occurrences
+        vals.map! { |v| v.gsub(/(^|\s)-G(\d+)?($|\s)/, ' ').strip }
+        vals.reject!(&:empty?)
 
         s[k] = vals
       end
     end
   end
 end
-
-  # 0) Ensure Flutter adds its settings to all Pods targets
-  installer.pods_project.targets.each { |t| flutter_additional_ios_build_settings(t) }
-
-  # 1) Project-level (Pods.xcodeproj) configs — override here too
-  installer.pods_project.build_configurations.each { |cfg| set_clean_flags!(cfg) }
-
-  # 2) Each Pod target configs — override at target level
-  installer.pods_project.targets.each do |t|
-    t.build_configurations.each { |cfg| set_clean_flags!(cfg) }
-  end
-
-  # 3) Runner project (your app) — override at target level
-  require 'xcodeproj'
-  runner_proj_path = File.expand_path('../Runner.xcodeproj', __FILE__)
-  runner_proj = Xcodeproj::Project.open(runner_proj_path)
-  runner_proj.targets.each do |t|
-    t.build_configurations.each { |cfg| set_clean_flags!(cfg) }
-  end
-  runner_proj.save
-
-  # 4) FINAL: scrub Pods' generated .xcconfig files for any bare "-G"
-  Dir.glob(File.expand_path('../Pods/Target Support Files/**/*.xcconfig', __FILE__)).each do |xc|
-    txt = File.read(xc)
-    new_txt = txt.gsub(/(^|\s)-G(\s|$)/, '\1\2')
-    if new_txt != txt
-      File.open(xc, 'w') { |f| f.write(new_txt) }
-      puts "scrubbed xcconfig: #{xc}"
-    end
-  end
-end
-
