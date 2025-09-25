@@ -4,7 +4,7 @@
     max_build_duration: 60
     environment:
       vars:
-        FLUTTER_VERSION: "3.24.3"
+        FLUTTER_VERSION: "3.24.3"      # pin to a known-stable
       xcode: 15.4
       cocoapods: default
       cache:
@@ -17,28 +17,28 @@
         script: |
           #!/bin/sh
           set -e
-          SDK_ROOT="\C:\Users\User/.flutter-sdk"
-          SDK_DIR="\/\"
+          SDK_ROOT="$HOME/.flutter-sdk"
+          SDK_DIR="$SDK_ROOT/$FLUTTER_VERSION"
           REPO_URL="https://github.com/flutter/flutter"
 
-          mkdir -p "\"
-          if [ ! -x "\/bin/flutter" ]; then
-            rm -rf "\.tmp"
+          mkdir -p "$SDK_ROOT"
+          if [ ! -x "$SDK_DIR/bin/flutter" ]; then
+            rm -rf "$SDK_DIR.tmp"
             i=1
-            while [ \ -le 3 ]; do
-              echo "Clone attempt \/3…"
-              if git clone --depth 1 --branch "\" "\" "\.tmp"; then
-                mv "\.tmp" "\"
+            while [ $i -le 3 ]; do
+              echo "Clone attempt $i/3…"
+              if git clone --depth 1 --branch "$FLUTTER_VERSION" "$REPO_URL" "$SDK_DIR.tmp"; then
+                mv "$SDK_DIR.tmp" "$SDK_DIR"
                 break
               fi
-              [ \ -eq 3 ] && { echo "Failed to clone Flutter after 3 attempts"; exit 2; }
-              sleep 10; i=\
+              [ $i -eq 3 ] && { echo "Failed to clone Flutter after 3 attempts"; exit 2; }
+              sleep 10; i=$((i+1))
             done
           else
-            echo "Flutter \ already cached at \"
+            echo "Flutter $FLUTTER_VERSION already cached at $SDK_DIR"
           fi
 
-          export PATH="\/bin:\"
+          export PATH="$SDK_DIR/bin:$PATH"
           flutter --version
           flutter config --no-analytics
           flutter precache --ios
@@ -47,15 +47,19 @@
         script: |
           #!/bin/sh
           set -e
-          export PATH="\C:\Users\User/.flutter-sdk/\/bin:\"
+          export PATH="$HOME/.flutter-sdk/$FLUTTER_VERSION/bin:$PATH"
           flutter pub get
 
       - name: Podfile sanitize + robust pod install (POSIX)
         script: |
           #!/bin/sh
           set -e
-          # Ensure CocoaPods CDN is used and iOS 13.0 is set in your Podfile
-          # (Make sure your ios/Podfile starts with: source 'https://cdn.cocoapods.org/')
+          # Ensure CocoaPods CDN line exists at the top
+          if ! grep -q "^source 'https://cdn.cocoapods.org/'" ios/Podfile; then
+            printf "source 'https://cdn.cocoapods.org/'\n%s" "$(cat ios/Podfile)" > ios/Podfile
+          fi
+
+          # Auto-sanitize Podfile punctuation (curly quotes/dashes/ellipsis)
           sed -i.bak 's/[‘’]/'\''/g; s/[“”]/"/g; s/[–—]/-/g; s/…/.../g' ios/Podfile || true
           rm -f ios/Podfile.bak
           if grep -n "[‘’“”–—…]" ios/Podfile >/dev/null 2>&1; then
@@ -71,15 +75,15 @@
           rm -rf Pods Podfile.lock
 
           attempts=3; delay=10; i=1
-          while [ "\" -le "\" ]; do
-            echo "pod install attempt \/\…"
+          while [ "$i" -le "$attempts" ]; do
+            echo "pod install attempt $i/$attempts…"
             if pod install --repo-update; then
-              echo "pod install succeeded on attempt \"; break
+              echo "pod install succeeded on attempt $i"; break
             fi
-            if [ "\" -eq "\" ]; then
-              echo "pod install failed after \ attempts"; exit 2
+            if [ "$i" -eq "$attempts" ]; then
+              echo "pod install failed after $attempts attempts"; exit 2
             fi
-            echo "Retrying in \s…"; sleep "\"; i=\
+            echo "Retrying in ${delay}s…"; sleep "$delay"; i=$(( i + 1 ))
           done
           cd ..
 
@@ -87,7 +91,7 @@
         script: |
           #!/bin/sh
           set -e
-          export PATH="\C:\Users\User/.flutter-sdk/\/bin:\"
+          export PATH="$HOME/.flutter-sdk/$FLUTTER_VERSION/bin:$PATH"
           flutter build ios --debug --no-codesign -v
 
     artifacts:
