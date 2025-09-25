@@ -31,47 +31,37 @@ target 'Runner' do
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 end
 
-# ---- Post-install: ensure Flutter build settings + strip rogue -G flags (safe) ----
+# ---- Post-install: force-override flags at target level (kills any rogue -G) ----
 post_install do |installer|
-  # helper to scrub only the bare "-G" token without altering formatting
-  scrub = lambda do |config, key|
-    val = config.build_settings[key]
-    if val.is_a?(String)
-      config.build_settings[key] = val.gsub(/(^|\s)-G(\s|$)/, '\1\2')
-    elsif val.is_a?(Array)
-      config.build_settings[key] = val.reject { |f| f.to_s.strip == '-G' }
+  # Ensure Flutter sets up its basic settings for all Pods
+  installer.pods_project.targets.each do |t|
+    flutter_additional_ios_build_settings(t)
+  end
+
+  # Helper to set a clean flag list (only $(inherited))
+  def force_clean_flags!(config)
+    %w[OTHER_CFLAGS OTHER_CPLUSPLUSFLAGS OTHER_LDFLAGS].each do |k|
+      config.build_settings[k] = ['$(inherited)']
     end
   end
 
-  # 1) Pods project (all plugin targets)
-  installer.pods_project.targets.each do |target|
-    flutter_additional_ios_build_settings(target)
-    target.build_configurations.each do |config|
-      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
-      %w[OTHER_CFLAGS OTHER_CPLUSPLUSFLAGS OTHER_LDFLAGS].each { |k| scrub.call(config, k) }
+  # 1) Override on all Pods targets (highest precedence vs .xcconfig)
+  installer.pods_project.targets.each do |t|
+    t.build_configurations.each do |cfg|
+      cfg.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
+      force_clean_flags!(cfg)
     end
   end
 
-  # 2) Runner project (your app target)
+  # 2) Override on Runner target as well
   require 'xcodeproj'
   runner_proj_path = File.expand_path('../Runner.xcodeproj', __FILE__)
   runner_proj = Xcodeproj::Project.open(runner_proj_path)
   runner_proj.targets.each do |t|
-    t.build_configurations.each do |config|
-      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
-      %w[OTHER_CFLAGS OTHER_CPLUSPLUSFLAGS OTHER_LDFLAGS].each { |k| scrub.call(config, k) }
+    t.build_configurations.each do |cfg|
+      cfg.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
+      force_clean_flags!(cfg)
     end
   end
   runner_proj.save
-
-  # 3) FINAL PASS: scrub only Pods' Target Support .xcconfig files (NOT ios/Flutter)
-  def scrub_file(path)
-    text = File.read(path)
-    new  = text.gsub(/(^|\s)-G(\s|$)/, '\1\2') # remove -G only; keep whitespace & newlines
-    if new != text
-      File.open(path, 'w') { |f| f.write(new) }
-      puts "scrubbed xcconfig: #{path}"
-    end
-  end
-  Dir.glob(File.expand_path('../Pods/Target Support Files/**/*.xcconfig', __FILE__)).each { |p| scrub_file(p) }
 end
