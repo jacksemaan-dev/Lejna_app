@@ -1,6 +1,4 @@
 platform :ios, '13.0'
-
-# Disable CocoaPods analytics
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
 project 'Runner', {
@@ -31,65 +29,42 @@ target 'Runner' do
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 end
 
-# ---- Post-install: detect and scrub rogue -G; print exact sources ----
 post_install do |installer|
-  # normalize & scrub in build settings
-  scrub_key = lambda do |config, key|
-    val = config.build_settings[key]
-    if val.is_a?(String)
-      config.build_settings[key] = val.gsub(/(^|\s)-G(\s|$)/, '\1\2')
-    elsif val.is_a?(Array)
-      config.build_settings[key] = val.reject { |f| f.to_s.strip == '-G' }
+  # Helper: set clean flags on a build configuration
+  def set_clean_flags!(cfg)
+    cfg.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
+    %w[OTHER_CFLAGS OTHER_CPLUSPLUSFLAGS OTHER_LDFLAGS].each do |k|
+      cfg.build_settings[k] = ['$(inherited)']
     end
   end
 
-  # 1) Pods build settings (and ensure Flutter adds its own)
-  puts "=== POST_INSTALL: scanning Pods targets for -G ==="
+  # 0) Ensure Flutter adds its settings to all Pods targets
+  installer.pods_project.targets.each { |t| flutter_additional_ios_build_settings(t) }
+
+  # 1) Project-level (Pods.xcodeproj) configs — override here too
+  installer.pods_project.build_configurations.each { |cfg| set_clean_flags!(cfg) }
+
+  # 2) Each Pod target configs — override at target level
   installer.pods_project.targets.each do |t|
-    flutter_additional_ios_build_settings(t)
-    t.build_configurations.each do |cfg|
-      cfg.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
-      %w[OTHER_CFLAGS OTHER_CPLUSPLUSFLAGS OTHER_LDFLAGS].each do |k|
-        val = cfg.build_settings[k]
-        if val && val.to_s.match(/(^|\s)-G(\s|$)/)
-          puts "FOUND -G in Pods target=#{t.name} config=#{cfg.name} key=#{k}: #{val.inspect}"
-        end
-        scrub_key.call(cfg, k)
-      end
-    end
+    t.build_configurations.each { |cfg| set_clean_flags!(cfg) }
   end
 
-  # 2) Runner (app) build settings
+  # 3) Runner project (your app) — override at target level
   require 'xcodeproj'
   runner_proj_path = File.expand_path('../Runner.xcodeproj', __FILE__)
   runner_proj = Xcodeproj::Project.open(runner_proj_path)
-  puts "=== POST_INSTALL: scanning Runner target(s) for -G ==="
   runner_proj.targets.each do |t|
-    t.build_configurations.each do |cfg|
-      cfg.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
-      %w[OTHER_CFLAGS OTHER_CPLUSPLUSFLAGS OTHER_LDFLAGS].each do |k|
-        val = cfg.build_settings[k]
-        if val && val.to_s.match(/(^|\s)-G(\s|$)/)
-          puts "FOUND -G in Runner target=#{t.name} config=#{cfg.name} key=#{k}: #{val.inspect}"
-        end
-        scrub_key.call(cfg, k)
-      end
-    end
+    t.build_configurations.each { |cfg| set_clean_flags!(cfg) }
   end
   runner_proj.save
 
-  # 3) Pods Target Support .xcconfig files (text-based configs Xcode reads)
-  puts "=== POST_INSTALL: scanning Pods Target Support .xcconfig files for -G ==="
-  def scrub_file(path)
-    text = File.read(path)
-    if text.match(/(^|\s)-G(\s|$)/)
-      puts "FOUND -G in xcconfig: #{path}"
-      new = text.gsub(/(^|\s)-G(\s|$)/, '\1\2') # remove bare -G only
-      File.open(path, 'w') { |f| f.write(new) }
-      puts "SCRUBBED xcconfig: #{path}"
+  # 4) FINAL: scrub Pods' generated .xcconfig files for any bare "-G"
+  Dir.glob(File.expand_path('../Pods/Target Support Files/**/*.xcconfig', __FILE__)).each do |xc|
+    txt = File.read(xc)
+    new_txt = txt.gsub(/(^|\s)-G(\s|$)/, '\1\2')
+    if new_txt != txt
+      File.open(xc, 'w') { |f| f.write(new_txt) }
+      puts "scrubbed xcconfig: #{xc}"
     end
   end
-  Dir.glob(File.expand_path('../Pods/Target Support Files/**/*.xcconfig', __FILE__)).each { |p| scrub_file(p) }
-
-  puts "=== POST_INSTALL: scan complete ==="
 end
