@@ -1,0 +1,71 @@
+platform :ios, '13.0'
+ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+project 'Runner', {
+  'Debug' => :debug,
+  'Profile' => :release,
+  'Release' => :release,
+}
+
+def flutter_root
+  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
+  unless File.exist?(generated_xcode_build_settings_path)
+    raise "Generated.xcconfig must exist. Run 'flutter pub get' first."
+  end
+  File.foreach(generated_xcode_build_settings_path) do |line|
+    matches = line.match(/FLUTTER_ROOT=(.*)/)
+    return matches[1].strip if matches
+  end
+  raise "FLUTTER_ROOT not found in Generated.xcconfig"
+end
+
+require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+
+flutter_ios_podfile_setup
+
+target 'Runner' do
+  use_frameworks! :linkage => :static
+  use_modular_headers!
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+end
+
+post_install do |installer|
+  # Helper: set clean flags on a build configuration
+  def set_clean_flags!(cfg)
+    cfg.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
+    %w[OTHER_CFLAGS OTHER_CPLUSPLUSFLAGS OTHER_LDFLAGS].each do |k|
+      cfg.build_settings[k] = ['$(inherited)']
+    end
+  end
+
+  # 0) Ensure Flutter adds its settings to all Pods targets
+  installer.pods_project.targets.each { |t| flutter_additional_ios_build_settings(t) }
+
+  # 1) Project-level (Pods.xcodeproj) configs — override here too
+  installer.pods_project.build_configurations.each { |cfg| set_clean_flags!(cfg) }
+
+  # 2) Each Pod target configs — override at target level
+  installer.pods_project.targets.each do |t|
+    t.build_configurations.each { |cfg| set_clean_flags!(cfg) }
+  end
+
+  # 3) Runner project (your app) — override at target level
+  require 'xcodeproj'
+  runner_proj_path = File.expand_path('../Runner.xcodeproj', __FILE__)
+  runner_proj = Xcodeproj::Project.open(runner_proj_path)
+  runner_proj.targets.each do |t|
+    t.build_configurations.each { |cfg| set_clean_flags!(cfg) }
+  end
+  runner_proj.save
+
+  # 4) FINAL: scrub Pods' generated .xcconfig files for any bare "-G"
+  Dir.glob(File.expand_path('../Pods/Target Support Files/**/*.xcconfig', __FILE__)).each do |xc|
+    txt = File.read(xc)
+    new_txt = txt.gsub(/(^|\s)-G(\s|$)/, '\1\2')
+    if new_txt != txt
+      File.open(xc, 'w') { |f| f.write(new_txt) }
+      puts "scrubbed xcconfig: #{xc}"
+    end
+  end
+end
+
