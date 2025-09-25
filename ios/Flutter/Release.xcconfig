@@ -2,3 +2,5 @@
 #include? "ephemeral/Flutter-Generated.xcconfig"
 
 #include? "Override.xcconfig"
+
+#include? "Override.xcconfig"
