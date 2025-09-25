@@ -2,16 +2,19 @@
   ios_debug:
     name: Lejna iOS Debug (no codesign)
     max_build_duration: 60
+
     environment:
       vars:
-        FLUTTER_VERSION: "3.24.3"      # pin to a known-stable
+        FLUTTER_VERSION: "3.24.3"   # pin a stable version
       xcode: 15.4
       cocoapods: default
-      cache:
-        cache_paths:
-          - ~/.flutter-sdk
-          - ~/.pub-cache
-          - ~/Library/Caches/CocoaPods
+
+    cache:
+      cache_paths:
+        - ~/.flutter-sdk
+        - ~/.pub-cache
+        - ~/Library/Caches/CocoaPods
+
     scripts:
       - name: Install Flutter via shallow git (cached)
         script: |
@@ -54,7 +57,7 @@
         script: |
           #!/bin/sh
           set -e
-          # Ensure CocoaPods CDN line exists at the top
+          # Ensure CocoaPods CDN line exists at the very top
           if ! grep -q "^source 'https://cdn.cocoapods.org/'" ios/Podfile; then
             printf "source 'https://cdn.cocoapods.org/'\n%s" "$(cat ios/Podfile)" > ios/Podfile
           fi
@@ -97,8 +100,7 @@
     artifacts:
       - build/ios/**/*
     triggering:
-      events:
-        - push
+      events: [ push ]
       branch_patterns:
         - pattern: "*"
           include: true
