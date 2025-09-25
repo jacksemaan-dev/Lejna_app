@@ -1,9 +1,6 @@
-# CocoaPods analytics
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
-
 platform :ios, '13.0'
 
-# Locate Flutter and load its pod helper
 def flutter_root
   generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
   unless File.exist?(generated_xcode_build_settings_path)
@@ -17,7 +14,6 @@ def flutter_root
 end
 
 require File.expand_path(File.join(flutter_root, 'packages', 'flutter_tools', 'bin', 'podhelper'), __FILE__)
-
 flutter_ios_podfile_setup
 
 project 'Runner', {
@@ -27,20 +23,18 @@ project 'Runner', {
 }
 
 target 'Runner' do
-  # Do NOT manually add use_frameworks!/use_modular_headers! here; Flutter handles it per-plugin.
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 end
 
 post_install do |installer|
-  # 1) Apply Flutter’s additional settings to every pod target
   installer.pods_project.targets.each do |t|
+    # Apply Flutter’s defaults first
     flutter_additional_ios_build_settings(t)
 
-    # 2) Enforce iOS 13.0 min and scrub invalid flags
     t.build_configurations.each do |config|
       s = config.build_settings
 
-      # Ensure minimum iOS deployment target
+      # Enforce iOS 13.0 minimum
       current = s['IPHONEOS_DEPLOYMENT_TARGET'].to_s
       min = '13.0'
       if current.empty?
@@ -54,18 +48,13 @@ post_install do |installer|
         end
       end
 
-      # Strip any form of -G / -G0 / -G<number> from all relevant flags
+      # Scrub any invalid -G flags from all relevant settings
       %w[OTHER_CFLAGS OTHER_CPLUSPLUSFLAGS OTHER_LDFLAGS OTHER_SWIFT_FLAGS].each do |k|
         next unless s[k]
         vals = s[k].is_a?(Array) ? s[k].dup : s[k].to_s.split(/\s+/)
-
-        # remove tokens that are exactly -G or -G<digits>
-        vals.reject! { |v| v =~ /\A-G(\d+)?\z/ }
-
-        # and scrub embedded occurrences
-        vals.map! { |v| v.gsub(/(^|\s)-G(\d+)?($|\s)/, ' ').strip }
+        vals.reject! { |v| v =~ /\A-G(\d+)?\z/ }                  # remove tokens exactly -G / -G<num>
+        vals.map!    { |v| v.gsub(/(^|\s)-G(\d+)?($|\s)/, ' ').strip } # scrub embedded occurrences
         vals.reject!(&:empty?)
-
         s[k] = vals
       end
     end
