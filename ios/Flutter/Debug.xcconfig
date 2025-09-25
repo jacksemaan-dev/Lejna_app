@@ -1,4 +1,0 @@
-#include? "Generated.xcconfig"
-#include? "ephemeral/Flutter-Generated.xcconfig"
-
-#include? "Override.xcconfig"
