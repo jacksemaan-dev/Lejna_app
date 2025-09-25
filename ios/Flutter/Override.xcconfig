@@ -1,4 +1,3 @@
-// Final override: ensure no rogue -G ends up in the build.
 OTHER_CFLAGS = $(inherited)
 OTHER_CPLUSPLUSFLAGS = $(inherited)
 OTHER_LDFLAGS = $(inherited)
