@@ -26,37 +26,33 @@ require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelpe
 flutter_ios_podfile_setup
 
 target 'Runner' do
-  # Use static frameworks to avoid symbol duplication
   use_frameworks! :linkage => :static
   use_modular_headers!
-
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 end
 
-# ---- Post-install: ensure Flutter build settings + strip rogue -G flags everywhere ----
+# ---- Post-install: ensure Flutter build settings + strip rogue -G flags (safe) ----
 post_install do |installer|
-  # helper to normalize and scrub flags whether String or Array
+  # helper to scrub only the bare "-G" token without altering formatting
   scrub = lambda do |config, key|
     val = config.build_settings[key]
     if val.is_a?(String)
-      config.build_settings[key] = val.gsub(/\s-G(\s|$)/, ' ').squeeze(' ').strip
+      config.build_settings[key] = val.gsub(/(^|\s)-G(\s|$)/, '\1\2')
     elsif val.is_a?(Array)
       config.build_settings[key] = val.reject { |f| f.to_s.strip == '-G' }
     end
   end
 
-  # 1) Pods project (all plugin targets) — scrub in build settings
+  # 1) Pods project (all plugin targets)
   installer.pods_project.targets.each do |target|
-    # REQUIRED so Flutter plugins get correct search paths & flags
     flutter_additional_ios_build_settings(target)
-
     target.build_configurations.each do |config|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
       %w[OTHER_CFLAGS OTHER_CPLUSPLUSFLAGS OTHER_LDFLAGS].each { |k| scrub.call(config, k) }
     end
   end
 
-  # 2) Runner project (your app target) — scrub build settings
+  # 2) Runner project (your app target)
   require 'xcodeproj'
   runner_proj_path = File.expand_path('../Runner.xcodeproj', __FILE__)
   runner_proj = Xcodeproj::Project.open(runner_proj_path)
@@ -68,17 +64,14 @@ post_install do |installer|
   end
   runner_proj.save
 
-  # 3) FINAL PASS: scrub any generated .xcconfig files produced by CocoaPods
-  #    This ensures no '-G' slips in via text-based configs that Xcode reads.
+  # 3) FINAL PASS: scrub only Pods' Target Support .xcconfig files (NOT ios/Flutter)
   def scrub_file(path)
     text = File.read(path)
-    new  = text.gsub(/\s-G(\s|$)/, ' ').gsub(/\s+/, ' ')
+    new  = text.gsub(/(^|\s)-G(\s|$)/, '\1\2') # remove -G only; keep whitespace & newlines
     if new != text
       File.open(path, 'w') { |f| f.write(new) }
       puts "scrubbed xcconfig: #{path}"
     end
   end
-
-  Dir.glob(File.expand_path('../**/*.xcconfig', __FILE__)).each { |p| scrub_file(p) }
   Dir.glob(File.expand_path('../Pods/Target Support Files/**/*.xcconfig', __FILE__)).each { |p| scrub_file(p) }
 end
