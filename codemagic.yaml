@@ -127,10 +127,6 @@
         - ~/.pub-cache
         - ~/Library/Caches/CocoaPods
 
-    # Use your connected App Store Connect integration for publishing
-    integrations:
-      app_store_connect: Lejna_ASC
-
     scripts:
       - name: Install Flutter via shallow git (cached)
         script: |
@@ -214,7 +210,10 @@
 
     publishing:
       app_store_connect:
-        auth: integration
+        api_key:
+          issuer_id: $ASC_ISSUER_ID
+          key_id: $ASC_KEY_ID
+          private_key: $ASC_PRIVATE_KEY
         submit_to_testflight: true
         beta_groups:
           - Internal Testing
