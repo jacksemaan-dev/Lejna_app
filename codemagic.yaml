@@ -199,6 +199,5 @@
         submit_to_testflight: true
         beta_groups:
           - Internal Testing
-
-    triggering:
-      events: [ manual ]
+    integrations:
+      app_store_connect: Lejna_ASC
