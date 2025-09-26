@@ -5,7 +5,7 @@
 
     environment:
       vars:
-        FLUTTER_VERSION: "3.24.3"   # pin a stable version
+        FLUTTER_VERSION: "3.24.3"
       xcode: 15.4
       cocoapods: default
 
@@ -23,7 +23,6 @@
           SDK_ROOT="$HOME/.flutter-sdk"
           SDK_DIR="$SDK_ROOT/$FLUTTER_VERSION"
           REPO_URL="https://github.com/flutter/flutter"
-
           mkdir -p "$SDK_ROOT"
           if [ ! -x "$SDK_DIR/bin/flutter" ]; then
             rm -rf "$SDK_DIR.tmp"
@@ -40,7 +39,6 @@
           else
             echo "Flutter $FLUTTER_VERSION already cached at $SDK_DIR"
           fi
-
           export PATH="$SDK_DIR/bin:$PATH"
           flutter --version
           flutter config --no-analytics
@@ -57,26 +55,18 @@
         script: |
           #!/bin/sh
           set -e
-          # Ensure CocoaPods CDN line exists at the very top
           if ! grep -q "^source 'https://cdn.cocoapods.org/'" ios/Podfile; then
             printf "source 'https://cdn.cocoapods.org/'\n%s" "$(cat ios/Podfile)" > ios/Podfile
           fi
-
-          # Auto-sanitize Podfile punctuation (curly quotes/dashes/ellipsis)
           sed -i.bak 's/[‘’]/'\''/g; s/[“”]/"/g; s/[–—]/-/g; s/…/.../g' ios/Podfile || true
           rm -f ios/Podfile.bak
           if grep -n "[‘’“”–—…]" ios/Podfile >/dev/null 2>&1; then
             echo "Smart punctuation still present in ios/Podfile."; exit 1
           fi
-
           cd ios
-          ruby -v || true
-          pod --version || true
           pod repo update
-
           pod deintegrate || true
           rm -rf Pods Podfile.lock
-
           attempts=3; delay=10; i=1
           while [ "$i" -le "$attempts" ]; do
             echo "pod install attempt $i/$attempts…"
@@ -97,18 +87,21 @@
           export PATH="$HOME/.flutter-sdk/$FLUTTER_VERSION/bin:$PATH"
           flutter build ios --debug --no-codesign -v
 
-    artifacts:
-      - build/ios/**/*
-    triggering:
-      events: [ push ]
-      branch_patterns:
-        - pattern: "*"
-          include: true
-          source: true
+    # no triggering to avoid burning minutes
+    # triggering:
+    #   events: [ push ]
+    #   branch_patterns:
+    #     - pattern: "*"
+    #       include: true
+    #       source: true
 
   ios_testflight:
     name: Lejna iOS Release → TestFlight
     max_build_duration: 90
+
+    # declare which integration to use with `auth: integration`
+    integrations:
+      app_store_connect: Lejna_ASC   # <= pick the integration name you showed
 
     environment:
       vars:
@@ -116,8 +109,6 @@
         BUNDLE_ID: "com.lejna.app"
         IOS_DISPLAY_NAME: "Lejna"
         IOS_VERSION_NAME: "1.0.0"
-      groups:
-        - asc_credentials       # ASC_ISSUER_ID, ASC_KEY_ID, ASC_PRIVATE_KEY
       xcode: 15.4
       cocoapods: default
 
@@ -177,40 +168,14 @@
           done
           cd ..
 
-      - name: Purge stale signing state (certs & profiles)
-        script: |
-          #!/bin/sh
-          set -e
-          echo "Removing any certificates from Codemagic keychain…"
-          keychain delete-certificates || true
-          echo "Removing cached provisioning profiles…"
-          rm -f ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision || true
-          echo "Done purging local signing state."
-
-      - name: Fetch signing files and set Xcode profiles (App Store)
-        script: |
-          #!/bin/sh
-          set -e
-          app-store-connect fetch-signing-files "${BUNDLE_ID}" \
-            --type IOS_APP_STORE \
-            --create \
-            --issuer-id "$ASC_ISSUER_ID" \
-            --key-id "$ASC_KEY_ID" \
-            --private-key "$ASC_PRIVATE_KEY"
-          keychain add-certificates
-          xcode-project use-profiles --bundle-id "${BUNDLE_ID}"
-
       - name: Set bundle id, name, versions and build IPA (Release)
         script: |
           #!/bin/sh
           set -e
           export PATH="$HOME/.flutter-sdk/$FLUTTER_VERSION/bin:$PATH"
-          # Ensure Bundle ID in the Xcode project (no Xcode needed)
           sed -i '' "s/com\.example\.lejnaApp/${BUNDLE_ID}/g" ios/Runner.xcodeproj/project.pbxproj
-          # Display name in Info.plist (add if missing)
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ${IOS_DISPLAY_NAME}" ios/Runner/Info.plist 2>/dev/null || \
           /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ${IOS_DISPLAY_NAME}" ios/Runner/Info.plist
-          # Versioning
           BUILD_NUM="${BUILD_NUMBER:-1}"
           flutter build ipa --release --build-name="${IOS_VERSION_NAME}" --build-number="${BUILD_NUM}"
 
