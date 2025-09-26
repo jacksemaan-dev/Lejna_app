@@ -101,7 +101,7 @@
 
     # declare which integration to use with `auth: integration`
     integrations:
-      app_store_connect: Lejna_ASC   # <= pick the integration name you showed
+      app_store_connect: Lejna_ASC
 
     environment:
       vars:
@@ -168,16 +168,18 @@
           done
           cd ..
 
-      - name: Set bundle id, name, versions and build IPA (Release)
-        script: |
-          #!/bin/sh
-          set -e
-          export PATH="$HOME/.flutter-sdk/$FLUTTER_VERSION/bin:$PATH"
-          sed -i '' "s/com\.example\.lejnaApp/${BUNDLE_ID}/g" ios/Runner.xcodeproj/project.pbxproj
-          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ${IOS_DISPLAY_NAME}" ios/Runner/Info.plist 2>/dev/null || \
-          /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ${IOS_DISPLAY_NAME}" ios/Runner/Info.plist
-          BUILD_NUM="${BUILD_NUMBER:-1}"
-          flutter build ipa --release --build-name="${IOS_VERSION_NAME}" --build-number="${BUILD_NUM}"
+- name: Fetch signing files and set Xcode profiles (App Store) via Base64 key
+  script: |
+    #!/bin/sh
+    set -e
+    app-store-connect fetch-signing-files "${BUNDLE_ID}" \
+      --type IOS_APP_STORE \
+      --create \
+      --issuer-id "$ASC_ISSUER_ID" \
+      --key-id "$ASC_KEY_ID" \
+      --private-key-base64 "$ASC_PRIVATE_KEY_B64"
+    keychain add-certificates
+    xcode-project use-profiles --bundle-id "${BUNDLE_ID}"
 
     artifacts:
       - build/ios/**/*.ipa
