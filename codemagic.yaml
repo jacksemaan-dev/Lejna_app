@@ -116,6 +116,8 @@
         BUNDLE_ID: "com.lejna.app"
         IOS_DISPLAY_NAME: "Lejna"
         IOS_VERSION_NAME: "1.0.0"
+      groups:
+        - asc_credentials          # uses ASC_ISSUER_ID, ASC_KEY_ID, ASC_PRIVATE_KEY
       xcode: 15.4
       cocoapods: default
 
@@ -124,6 +126,10 @@
         - ~/.flutter-sdk
         - ~/.pub-cache
         - ~/Library/Caches/CocoaPods
+
+    # Use your connected App Store Connect integration for publishing
+    integrations:
+      app_store_connect: Lejna_ASC
 
     scripts:
       - name: Install Flutter via shallow git (cached)
@@ -175,6 +181,19 @@
           done
           cd ..
 
+      - name: Fetch signing files and set Xcode profiles (App Store)
+        script: |
+          #!/bin/sh
+          set -e
+          app-store-connect fetch-signing-files "${BUNDLE_ID}" \
+            --type IOS_APP_STORE \
+            --create \
+            --issuer-id "$ASC_ISSUER_ID" \
+            --key-id "$ASC_KEY_ID" \
+            --private-key "$ASC_PRIVATE_KEY"
+          keychain add-certificates
+          xcode-project use-profiles --bundle-id "${BUNDLE_ID}"
+
       - name: Set bundle id, name, versions and build IPA (Release)
         script: |
           #!/bin/sh
@@ -182,8 +201,8 @@
           export PATH="$HOME/.flutter-sdk/$FLUTTER_VERSION/bin:$PATH"
           # Ensure Bundle ID in the Xcode project (no Xcode needed)
           sed -i '' "s/com\.example\.lejnaApp/${BUNDLE_ID}/g" ios/Runner.xcodeproj/project.pbxproj
-          # Display name in Info.plist
-          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ${IOS_DISPLAY_NAME}" ios/Runner/Info.plist || \
+          # Display name in Info.plist (add if missing)
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ${IOS_DISPLAY_NAME}" ios/Runner/Info.plist 2>/dev/null || \
           /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ${IOS_DISPLAY_NAME}" ios/Runner/Info.plist
           # Versioning
           BUILD_NUM="${BUILD_NUMBER:-1}"
@@ -199,5 +218,3 @@
         submit_to_testflight: true
         beta_groups:
           - Internal Testing
-    integrations:
-      app_store_connect: Lejna_ASC
