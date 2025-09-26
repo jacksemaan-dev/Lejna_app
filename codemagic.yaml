@@ -220,9 +220,7 @@
 
     publishing:
       app_store_connect:
-        api_key: $ASC_PRIVATE_KEY
-        key_id: $ASC_KEY_ID
-        issuer_id: $ASC_ISSUER_ID
+        auth: integration
         submit_to_testflight: true
         beta_groups:
           - Internal Testing
