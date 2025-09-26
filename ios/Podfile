@@ -2,10 +2,14 @@ source 'https://cdn.cocoapods.org/'
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 platform :ios, '13.0'
 
+# Generate module maps for non-modular deps when linking statically.
+use_modular_headers!
+
+# Flutter boilerplate
 def flutter_root
   generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
   unless File.exist?(generated_xcode_build_settings_path)
-    raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, make sure `flutter pub get` is executed first"
+    raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, run `flutter pub get` first"
   end
   File.foreach(generated_xcode_build_settings_path) do |line|
     match = line.match(/FLUTTER_ROOT\=(.*)/)
@@ -17,25 +21,22 @@ end
 require File.expand_path(File.join(flutter_root, 'packages', 'flutter_tools', 'bin', 'podhelper'), __FILE__)
 flutter_ios_podfile_setup
 
-project 'Runner', {
-  'Debug' => :debug,
-  'Profile' => :release,
-  'Release' => :release,
-}
+project 'Runner', { 'Debug' => :debug, 'Profile' => :release, 'Release' => :release }
 
 target 'Runner' do
+  # Don’t add use_frameworks! unless we choose the fallback path.
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 end
 
 post_install do |installer|
   installer.pods_project.targets.each do |t|
-    # Apply Flutter’s defaults first
+    # Keep Flutter defaults
     flutter_additional_ios_build_settings(t)
 
     t.build_configurations.each do |config|
       s = config.build_settings
 
-      # Enforce iOS 13.0 minimum
+      # Enforce iOS 13.0 min
       current = s['IPHONEOS_DEPLOYMENT_TARGET'].to_s
       min = '13.0'
       if current.empty?
@@ -49,15 +50,18 @@ post_install do |installer|
         end
       end
 
-      # Scrub any invalid -G flags from all relevant settings
+      # Scrub any invalid -G* flags everywhere
       %w[OTHER_CFLAGS OTHER_CPLUSPLUSFLAGS OTHER_LDFLAGS OTHER_SWIFT_FLAGS].each do |k|
         next unless s[k]
         vals = s[k].is_a?(Array) ? s[k].dup : s[k].to_s.split(/\s+/)
-        vals.reject! { |v| v =~ /\A-G(\d+)?\z/ }                  # remove tokens exactly -G / -G<num>
-        vals.map!    { |v| v.gsub(/(^|\s)-G(\d+)?($|\s)/, ' ').strip } # scrub embedded occurrences
+        vals.reject! { |v| v =~ /\A-G(\d+)?\z/ }
+        vals.map!    { |v| v.gsub(/(^|\s)-G(\d+)?($|\s)/, ' ').strip }
         vals.reject!(&:empty?)
         s[k] = vals
       end
+
+      # Be tolerant to non-modular includes when frameworks generate module maps
+      s['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
     end
   end
 end
