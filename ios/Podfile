@@ -2,15 +2,13 @@ source 'https://cdn.cocoapods.org/'
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 platform :ios, '13.0'
 
-# Generate module maps for non-modular deps when linking statically.
-use_modular_headers!
+# Use static frameworks (Flutter-friendly) instead of static libs/modular headers
+use_frameworks! :linkage => :static
 
-# Flutter boilerplate
+# --- Flutter boilerplate ---
 def flutter_root
   generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
-  unless File.exist?(generated_xcode_build_settings_path)
-    raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, run `flutter pub get` first"
-  end
+  raise "#{generated_xcode_build_settings_path} must exist. Run `flutter pub get` first" unless File.exist?(generated_xcode_build_settings_path)
   File.foreach(generated_xcode_build_settings_path) do |line|
     match = line.match(/FLUTTER_ROOT\=(.*)/)
     return match[1].strip if match
@@ -24,7 +22,6 @@ flutter_ios_podfile_setup
 project 'Runner', { 'Debug' => :debug, 'Profile' => :release, 'Release' => :release }
 
 target 'Runner' do
-  # Don’t add use_frameworks! unless we choose the fallback path.
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 end
 
@@ -36,21 +33,21 @@ post_install do |installer|
     t.build_configurations.each do |config|
       s = config.build_settings
 
-      # Enforce iOS 13.0 min
-      current = s['IPHONEOS_DEPLOYMENT_TARGET'].to_s
+      # Enforce iOS 13.0 minimum
       min = '13.0'
-      if current.empty?
+      cur = s['IPHONEOS_DEPLOYMENT_TARGET'].to_s
+      if cur.empty?
         s['IPHONEOS_DEPLOYMENT_TARGET'] = min
       else
         begin
           require 'rubygems'
-          s['IPHONEOS_DEPLOYMENT_TARGET'] = min if Gem::Version.new(current) < Gem::Version.new(min)
+          s['IPHONEOS_DEPLOYMENT_TARGET'] = min if Gem::Version.new(cur) < Gem::Version.new(min)
         rescue
           s['IPHONEOS_DEPLOYMENT_TARGET'] = min
         end
       end
 
-      # Scrub any invalid -G* flags everywhere
+      # Strip any invalid -G flags that slipped in from any pod
       %w[OTHER_CFLAGS OTHER_CPLUSPLUSFLAGS OTHER_LDFLAGS OTHER_SWIFT_FLAGS].each do |k|
         next unless s[k]
         vals = s[k].is_a?(Array) ? s[k].dup : s[k].to_s.split(/\s+/)
@@ -60,8 +57,15 @@ post_install do |installer|
         s[k] = vals
       end
 
-      # Be tolerant to non-modular includes when frameworks generate module maps
+      # Be tolerant if any pod includes non-modular headers
       s['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+    end
+
+    # Force module generation for gRPC family so modulemaps exist even with static frameworks
+    if %w[gRPC-C++ gRPC-Core BoringSSL-GRPC abseil Libuv-gRPC openssl_grpc Protobuf protobuf].include?(t.name)
+      t.build_configurations.each do |config|
+        config.build_settings['DEFINES_MODULE'] = 'YES'
+      end
     end
   end
 end
