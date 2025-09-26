@@ -210,10 +210,9 @@
 
     publishing:
       app_store_connect:
-        api_key:
-          issuer_id: "$ASC_ISSUER_ID"
-          key_id: "$ASC_KEY_ID"
-          private_key: "$ASC_PRIVATE_KEY"
+        api_key: $ASC_PRIVATE_KEY      # the .p8 contents from your env var
+        key_id: $ASC_KEY_ID
+        issuer_id: $ASC_ISSUER_ID
         submit_to_testflight: true
         beta_groups:
           - Internal Testing
