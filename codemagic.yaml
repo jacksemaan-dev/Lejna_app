@@ -84,20 +84,12 @@
           export PATH="$HOME/.flutter-sdk/$FLUTTER_VERSION/bin:$PATH"
           flutter build ios --debug --no-codesign -v
 
-    # no auto-trigger to save minutes
-    # triggering:
-    #   events: [ push ]
-    #   branch_patterns:
-    #     - pattern: "*"
-    #       include: true
-    #       source: true
-
   ios_testflight:
     name: Lejna iOS Release → TestFlight
     max_build_duration: 90
 
     integrations:
-      app_store_connect: Lejna_ASC   # <- use your connected integration
+      app_store_connect: Lejna_ASC   # Use your connected Apple Developer Portal integration
 
     environment:
       vars:
@@ -106,7 +98,7 @@
         IOS_DISPLAY_NAME: "Lejna"
         IOS_VERSION_NAME: "1.0.0"
       groups:
-        - asc_credentials            # <- attach env group so ASC_* vars are visible
+        - asc_credentials            # ok to keep; not strictly required when using integration
       xcode: 15.4
       cocoapods: default
 
@@ -166,16 +158,12 @@
           done
           cd ..
 
-      - name: Fetch signing files and set Xcode profiles (App Store) via Base64 key
+      - name: Fetch signing files and set Xcode profiles (App Store) via Integration
         script: |
           #!/bin/sh
           set -e
-          app-store-connect fetch-signing-files "${BUNDLE_ID}" \
-            --type IOS_APP_STORE \
-            --create \
-            --issuer-id "$ASC_ISSUER_ID" \
-            --key-id "$ASC_KEY_ID" \
-            --private-key-base64 "$ASC_PRIVATE_KEY_B64"
+          # Credentials are injected from the connected integration (Lejna_ASC)
+          app-store-connect fetch-signing-files "${BUNDLE_ID}" --type IOS_APP_STORE --create
           keychain add-certificates
           xcode-project use-profiles --bundle-id "${BUNDLE_ID}"
 
