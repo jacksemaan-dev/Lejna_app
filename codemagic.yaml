@@ -105,3 +105,100 @@
         - pattern: "*"
           include: true
           source: true
+
+  ios_testflight:
+    name: Lejna iOS Release → TestFlight
+    max_build_duration: 90
+
+    environment:
+      vars:
+        FLUTTER_VERSION: "3.24.3"
+        BUNDLE_ID: "com.lejna.app"
+        IOS_DISPLAY_NAME: "Lejna"
+        IOS_VERSION_NAME: "1.0.0"
+      xcode: 15.4
+      cocoapods: default
+
+    cache:
+      cache_paths:
+        - ~/.flutter-sdk
+        - ~/.pub-cache
+        - ~/Library/Caches/CocoaPods
+
+    scripts:
+      - name: Install Flutter via shallow git (cached)
+        script: |
+          #!/bin/sh
+          set -e
+          SDK_ROOT="$HOME/.flutter-sdk"
+          SDK_DIR="$SDK_ROOT/$FLUTTER_VERSION"
+          REPO_URL="https://github.com/flutter/flutter"
+          mkdir -p "$SDK_ROOT"
+          if [ ! -x "$SDK_DIR/bin/flutter" ]; then
+            rm -rf "$SDK_DIR.tmp"
+            i=1; while [ $i -le 3 ]; do
+              git clone --depth 1 --branch "$FLUTTER_VERSION" "$REPO_URL" "$SDK_DIR.tmp" && break
+              [ $i -eq 3 ] && { echo "Flutter clone failed"; exit 2; }
+              sleep 10; i=$((i+1))
+            done
+            mv "$SDK_DIR.tmp" "$SDK_DIR"
+          fi
+          export PATH="$SDK_DIR/bin:$PATH"
+          flutter --version
+          flutter config --no-analytics
+          flutter precache --ios
+
+      - name: Pub get
+        script: |
+          #!/bin/sh
+          set -e
+          export PATH="$HOME/.flutter-sdk/$FLUTTER_VERSION/bin:$PATH"
+          flutter pub get
+
+      - name: Podfile sanitize + robust pod install
+        script: |
+          #!/bin/sh
+          set -e
+          if ! grep -q "^source 'https://cdn.cocoapods.org/'" ios/Podfile; then
+            printf "source 'https://cdn.cocoapods.org/'\n%s" "$(cat ios/Podfile)" > ios/Podfile
+          fi
+          sed -i.bak 's/[‘’]/'\''/g; s/[“”]/"/g; s/[–—]/-/g; s/…/.../g' ios/Podfile || true
+          rm -f ios/Podfile.bak
+          cd ios
+          pod repo update
+          pod deintegrate || true
+          rm -rf Pods Podfile.lock
+          i=1; while [ $i -le 3 ]; do
+            pod install --repo-update && break
+            [ $i -eq 3 ] && { echo "pod install failed"; exit 2; }
+            sleep 10; i=$((i+1))
+          done
+          cd ..
+
+      - name: Set bundle id, name, versions and build IPA (Release)
+        script: |
+          #!/bin/sh
+          set -e
+          export PATH="$HOME/.flutter-sdk/$FLUTTER_VERSION/bin:$PATH"
+          # Ensure Bundle ID in the Xcode project (no Xcode needed)
+          sed -i '' "s/com\.example\.lejnaApp/${BUNDLE_ID}/g" ios/Runner.xcodeproj/project.pbxproj
+          # Display name in Info.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ${IOS_DISPLAY_NAME}" ios/Runner/Info.plist || \
+          /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ${IOS_DISPLAY_NAME}" ios/Runner/Info.plist
+          # Versioning
+          BUILD_NUM="${BUILD_NUMBER:-1}"
+          flutter build ipa --release --build-name="${IOS_VERSION_NAME}" --build-number="${BUILD_NUM}"
+
+    artifacts:
+      - build/ios/**/*.ipa
+      - build/ios/archive/**/*.xcarchive
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        beta_groups:
+          - Internal Testing
+
+    triggering:
+      events: [ manual ]
