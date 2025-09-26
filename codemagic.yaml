@@ -88,8 +88,9 @@
     name: Lejna iOS Release → TestFlight
     max_build_duration: 90
 
+    # Use your connected App Store Connect integration
     integrations:
-      app_store_connect: Lejna_ASC   # Use your connected Apple Developer Portal integration
+      app_store_connect: Lejna_ASC
 
     environment:
       vars:
@@ -98,7 +99,7 @@
         IOS_DISPLAY_NAME: "Lejna"
         IOS_VERSION_NAME: "1.0.0"
       groups:
-        - asc_credentials            # ok to keep; not strictly required when using integration
+        - asc_credentials
       xcode: 15.4
       cocoapods: default
 
@@ -158,13 +159,15 @@
           done
           cd ..
 
-      - name: Fetch signing files and set Xcode profiles (App Store) via Integration
+      - name: Fetch signing files and set Xcode profiles (via Integration)
         script: |
           #!/bin/sh
           set -e
-          # Credentials are injected from the connected integration (Lejna_ASC)
-          app-store-connect fetch-signing-files "${BUNDLE_ID}" --type IOS_APP_STORE --create
-          keychain add-certificates
+          # Uses the connected App Store Connect integration (no API key flags needed)
+          app-store-connect fetch-signing-files "${BUNDLE_ID}" \
+            --type IOS_APP_STORE \
+            --create
+          # DO NOT call `keychain add-certificates` here – fetch-signing-files already imports the certs.
           xcode-project use-profiles --bundle-id "${BUNDLE_ID}"
 
       - name: Set bundle id, name, versions and build IPA (Release)
@@ -172,9 +175,12 @@
           #!/bin/sh
           set -e
           export PATH="$HOME/.flutter-sdk/$FLUTTER_VERSION/bin:$PATH"
+          # Ensure the bundle id matches
           sed -i '' "s/com\.example\.lejnaApp/${BUNDLE_ID}/g" ios/Runner.xcodeproj/project.pbxproj
+          # Display name
           /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ${IOS_DISPLAY_NAME}" ios/Runner/Info.plist 2>/dev/null || \
           /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ${IOS_DISPLAY_NAME}" ios/Runner/Info.plist
+          # Version / build
           BUILD_NUM="${BUILD_NUMBER:-1}"
           flutter build ipa --release --build-name="${IOS_VERSION_NAME}" --build-number="${BUILD_NUM}"
 
