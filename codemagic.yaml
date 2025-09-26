@@ -117,7 +117,7 @@
         IOS_DISPLAY_NAME: "Lejna"
         IOS_VERSION_NAME: "1.0.0"
       groups:
-        - asc_credentials          # uses ASC_ISSUER_ID, ASC_KEY_ID, ASC_PRIVATE_KEY
+        - asc_credentials
       xcode: 15.4
       cocoapods: default
 
@@ -211,9 +211,9 @@
     publishing:
       app_store_connect:
         api_key:
-          issuer_id: $ASC_ISSUER_ID
-          key_id: $ASC_KEY_ID
-          private_key: $ASC_PRIVATE_KEY
+          issuer_id: "$ASC_ISSUER_ID"
+          key_id: "$ASC_KEY_ID"
+          private_key: "$ASC_PRIVATE_KEY"
         submit_to_testflight: true
         beta_groups:
           - Internal Testing
