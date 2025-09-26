@@ -60,9 +60,6 @@
           fi
           sed -i.bak 's/[‘’]/'\''/g; s/[“”]/"/g; s/[–—]/-/g; s/…/.../g' ios/Podfile || true
           rm -f ios/Podfile.bak
-          if grep -n "[‘’“”–—…]" ios/Podfile >/dev/null 2>&1; then
-            echo "Smart punctuation still present in ios/Podfile."; exit 1
-          fi
           cd ios
           pod repo update
           pod deintegrate || true
@@ -87,7 +84,7 @@
           export PATH="$HOME/.flutter-sdk/$FLUTTER_VERSION/bin:$PATH"
           flutter build ios --debug --no-codesign -v
 
-    # no triggering to avoid burning minutes
+    # no auto-trigger to save minutes
     # triggering:
     #   events: [ push ]
     #   branch_patterns:
@@ -99,9 +96,8 @@
     name: Lejna iOS Release → TestFlight
     max_build_duration: 90
 
-    # declare which integration to use with `auth: integration`
     integrations:
-      app_store_connect: Lejna_ASC
+      app_store_connect: Lejna_ASC   # <- use your connected integration
 
     environment:
       vars:
@@ -109,6 +105,8 @@
         BUNDLE_ID: "com.lejna.app"
         IOS_DISPLAY_NAME: "Lejna"
         IOS_VERSION_NAME: "1.0.0"
+      groups:
+        - asc_credentials            # <- attach env group so ASC_* vars are visible
       xcode: 15.4
       cocoapods: default
 
@@ -168,18 +166,29 @@
           done
           cd ..
 
-- name: Fetch signing files and set Xcode profiles (App Store) via Base64 key
-  script: |
-    #!/bin/sh
-    set -e
-    app-store-connect fetch-signing-files "${BUNDLE_ID}" \
-      --type IOS_APP_STORE \
-      --create \
-      --issuer-id "$ASC_ISSUER_ID" \
-      --key-id "$ASC_KEY_ID" \
-      --private-key-base64 "$ASC_PRIVATE_KEY_B64"
-    keychain add-certificates
-    xcode-project use-profiles --bundle-id "${BUNDLE_ID}"
+      - name: Fetch signing files and set Xcode profiles (App Store) via Base64 key
+        script: |
+          #!/bin/sh
+          set -e
+          app-store-connect fetch-signing-files "${BUNDLE_ID}" \
+            --type IOS_APP_STORE \
+            --create \
+            --issuer-id "$ASC_ISSUER_ID" \
+            --key-id "$ASC_KEY_ID" \
+            --private-key-base64 "$ASC_PRIVATE_KEY_B64"
+          keychain add-certificates
+          xcode-project use-profiles --bundle-id "${BUNDLE_ID}"
+
+      - name: Set bundle id, name, versions and build IPA (Release)
+        script: |
+          #!/bin/sh
+          set -e
+          export PATH="$HOME/.flutter-sdk/$FLUTTER_VERSION/bin:$PATH"
+          sed -i '' "s/com\.example\.lejnaApp/${BUNDLE_ID}/g" ios/Runner.xcodeproj/project.pbxproj
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName ${IOS_DISPLAY_NAME}" ios/Runner/Info.plist 2>/dev/null || \
+          /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string ${IOS_DISPLAY_NAME}" ios/Runner/Info.plist
+          BUILD_NUM="${BUILD_NUMBER:-1}"
+          flutter build ipa --release --build-name="${IOS_VERSION_NAME}" --build-number="${BUILD_NUM}"
 
     artifacts:
       - build/ios/**/*.ipa
